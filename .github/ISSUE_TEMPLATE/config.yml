@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: mailto:codexnotch@nemvik.com
+    about: Report potential vulnerabilities privately. Do not include secrets or conversation data.

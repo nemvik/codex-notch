@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a reproducible status, connection, or display problem.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Codex Notch. Please check existing issues first.
+        Never attach Codex databases, session files, credentials, or conversation logs. Redact chat titles in screenshots.
+        Report security issues privately to codexnotch@nemvik.com.
+  - type: input
+    id: version
+    attributes:
+      label: App release or commit
+      placeholder: Release tag or git rev-parse --short HEAD
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include macOS version, Mac model, Codex desktop/CLI version, and whether this is a source or downloaded build.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Describe the smallest sequence that shows the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: display
+    attributes:
+      label: Display setup
+      description: For visual problems, include resolution/scaling, menu-bar auto-hide, full-screen state, and any external displays. A cropped screenshot helps.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Optional diagnostics
+      description: Paste only the bounded --diagnose status/count output after reviewing it for private information.
+      render: text

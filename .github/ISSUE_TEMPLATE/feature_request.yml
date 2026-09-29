@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest an improvement to the local Codex companion.
+title: "[Idea] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check existing issues before adding an idea. Small, focused improvements are welcome.
+        This is a spare-time project, so requests are not delivery commitments.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe a concrete situation in your workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain what you would expect the app to do.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or existing workarounds
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Optional sketches or examples. Remove private chat content before attaching anything.

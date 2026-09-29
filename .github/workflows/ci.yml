@@ -1,0 +1,30 @@
+name: macOS checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Unit tests
+        run: swift test
+      - name: Build app
+        run: ./scripts/build.sh
+      - name: Read-only adapter fixtures
+        run: python3 scripts/test-adapter.py
+      - name: Verify bundle
+        run: |
+          codesign --verify --strict "build/Codex Island.app"
+          plutil -lint "build/Codex Island.app/Contents/Info.plist"
