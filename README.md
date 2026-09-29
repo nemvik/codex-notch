@@ -2,25 +2,27 @@
 
 Give your MacBook notch a small job: show when Codex is working, waiting for you, or finished.
 
-A free, open-source macOS companion built with SwiftUI and AppKit. A thin colored rim at the bottom of the notch shows the current status. Click the notch for exact counts and active chats, then select a chat to return to Codex. No API key, extra subscription, or external runtime dependencies.
+A free, open-source macOS companion built with SwiftUI and AppKit. A thin colored rim shows the current status. Bring the pointer toward the notch to reveal a small attached tab, then click to expand it into exact counts and active chats. No API key, extra subscription, or external runtime dependencies.
 
 [Česky](README.cs.md) · [Releases](https://github.com/nemvik/codex-notch/releases) · [Report a bug](https://github.com/nemvik/codex-notch/issues/new/choose)
 
 ![Thin colored status rim at the bottom of the MacBook notch, contained in the menu bar](docs/assets/notch.png)
 
-![Native popover showing Codex activity counts and chats after a click](docs/assets/popover.png)
+![Temporary clickable tab revealed when the pointer approaches the notch](docs/assets/reveal.png)
+
+![Attached black surface expanded to show Codex activity counts and chats after a click](docs/assets/popover.png)
 
 *Illustrations rendered from the actual SwiftUI views with demo data in an illustrative desktop context. The app interface is currently in Czech.*
 
 ## A quiet place for agent status
 
 - **At a glance:** a colored rim distinguishes working, waiting, completed, failed, idle, and disconnected states.
-- **Inside the menu bar:** the rim occupies only the safe drawable band below the camera cutout. No black panel or text extends into your application windows.
-- **Details on demand:** click the notch to open a native popover with task and subagent counts and the active chat list. It opens only on a click, never on hover.
-- **Native details:** system typography, SF Symbols, and a compact SwiftUI chat list inside an AppKit popover.
+- **Quiet at rest:** only the rim is visible, inside the safe menu-bar band below the camera cutout. No permanent panel covers your workspace.
+- **A clear click target:** approaching the notch briefly reveals a small black tab attached to it. Clicking expands the same surface into task and subagent counts and a chat list; hover alone never opens the full overview.
+- **Native details:** system typography, SF Symbols, and a compact SwiftUI chat list hosted by AppKit.
 - **Read-only:** opening a chat is the only interaction with Codex. The app never approves a command, starts an agent, or interrupts work.
 
-The rim stays within the menu bar and does not draw inside the physical camera cutout. On the development MacBook, it is a 1.5-point line in the available 2-point band. A standard menu-bar item is used only as a fallback on Macs without a notch or when no safe drawable band is available.
+The resting rim stays within the menu bar and does not draw inside the physical camera cutout. The hover tab temporarily extends 32 points below the menu bar and can cover the top of an application window while revealed. It retracts shortly after the pointer leaves. The expanded overview is 336 points wide; neither state adds side wings over menu icons. A standard menu-bar item and native popover are used only as a fallback on Macs without a notch or when no safe drawable band is available.
 
 ## Build and run
 
@@ -34,7 +36,7 @@ cd codex-notch
 
 For compatibility, the app bundle remains `build/Codex Island.app`, its executable is `CodexIsland`. Open the built app again for later launches; it does not need to be moved to Applications.
 
-**Building from source is recommended.** The pre-release `Codex-Notch-v0.1.0-arm64.zip` targets Apple Silicon and is signed ad-hoc, not Developer ID signed or notarized. macOS may prevent a downloaded build from opening. Intel users should build from source; hardware behavior on Intel has not been verified.
+**Building from source is recommended.** The planned pre-release `Codex-Notch-v0.1.0-arm64.zip` targets Apple Silicon and uses an ad-hoc signature, not Developer ID signing or notarization. Check the Releases page for availability; macOS may prevent a downloaded build from opening. Intel users should build from source; hardware behavior on Intel has not been verified.
 
 ## Using it
 
@@ -47,9 +49,11 @@ For compatibility, the app bundle remains `build/Codex Island.app`, its executab
 | Dim gray — idle | Connected, with no current activity or new results |
 | Gray — disconnected | Connecting or disconnected; not a claim that nothing is running |
 
-Click the notch to see exact counts and open the chat overview. If the app is using its menu-bar fallback, click that item instead. Click a row to open the corresponding Codex chat; a subagent opens its parent chat when known. Viewing the overview acknowledges new results. Finished rows remain for ten minutes; interruptions and lost connections are not counted as successful completions.
+Move the pointer toward the notch and pause briefly to reveal the clickable tab. Move away to let it retract, or click to expand the attached overview. Exact counts and chat details appear only after a click. You can also click the notch directly. If the app is using its menu-bar fallback, click that item instead.
 
-Click outside the popover to dismiss it. Its controls let you reconnect and quit. **Spouštět po přihlášení** enables launch at login through macOS; System Settings may ask you to allow the login item. Disable and re-enable that option if you move the app.
+Click a row to open the corresponding Codex chat; a subagent opens its parent chat when known. Viewing the overview acknowledges new results. Finished rows remain for ten minutes; interruptions and lost connections are not counted as successful completions.
+
+Click outside the overview, click the notch again, or press Escape while it has focus to close it. Its controls let you reconnect and quit. **Spouštět po přihlášení** enables launch at login through macOS; System Settings may ask you to allow the login item. Disable and re-enable that option if you move the app.
 
 ## Connection and privacy
 

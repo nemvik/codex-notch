@@ -12,7 +12,9 @@ enum PreviewRendering {
         defer { model.stop() }
         let presentation = IslandPresentation()
         presentation.rowCapacity = 3
-        for expanded in [false, true] {
+        for phase in [NotchPhase.resting, .revealed, .expanded] {
+            presentation.notchPhase = phase
+            let expanded = phase == .expanded
             let scene = PreviewScene(model: model, presentation: presentation, expanded: expanded)
                 .environment(\.colorScheme, .light)
                 .frame(width: 560, height: expanded ? 370 : 140)
@@ -22,7 +24,7 @@ enum PreviewRendering {
                   let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
                 throw NSError(domain: "CodexIsland.Preview", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not render preview"])
             }
-            try data.write(to: directory.appendingPathComponent(expanded ? "popover.png" : "notch.png"), options: .atomic)
+            try data.write(to: directory.appendingPathComponent(expanded ? "popover.png" : phase == .revealed ? "reveal.png" : "notch.png"), options: .atomic)
         }
     }
 }
@@ -48,14 +50,10 @@ private struct PreviewScene: View {
             .font(.system(size: 10)).foregroundStyle(Color.black.opacity(0.7))
             .padding(.horizontal, 18).frame(height: 34).background(.white.opacity(0.22))
             RoundedRectangle(cornerRadius: 12).fill(.black).frame(width: 179, height: 44).offset(y: -12)
-            NotchStatusView(model: model, geometry: geometry, open: {}).frame(width: 179, height: 34)
-            if expanded {
-                IslandView(model: model, presentation: presentation, renderingPreview: true)
-                    .frame(width: IslandLayout.width, height: IslandLayout.bodyHeight(capacity: 3))
-                    .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-                    .shadow(color: .black.opacity(0.15), radius: 12, y: 5)
-                    .padding(.top, 52)
-            }
+            NotchSurfaceView(model: model, presentation: presentation, geometry: geometry, toggle: {}, renderingPreview: true)
+                .frame(width: geometry.surfaceFrame(phase: presentation.notchPhase, capacity: 3).width,
+                       height: geometry.surfaceFrame(phase: presentation.notchPhase, capacity: 3).height)
+
         }
         .clipped()
         .overlay(alignment: .bottom) {

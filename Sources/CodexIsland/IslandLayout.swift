@@ -36,4 +36,5 @@ struct IslandIndicator: Equatable {
 @MainActor
 final class IslandPresentation: ObservableObject {
     @Published var rowCapacity = 2
+    @Published var notchPhase: NotchPhase = .resting
 }

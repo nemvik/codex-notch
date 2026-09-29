@@ -74,7 +74,7 @@ struct IslandView: View {
             HStack(spacing: 6) {
                 Circle().fill(model.isConnected ? Color.green.opacity(0.8) : Color.gray).frame(width: 4, height: 4)
                 Text(model.demo ? "Ukázkový přehled" : model.isConnected ? "Připojeno k tomuto Macu" : "Čekám na připojení")
-                    .font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                    .font(.system(size: 9.5)).foregroundStyle(.secondary)
                 Spacer()
                 Button { model.reconnect() } label: {
                     Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .medium))
@@ -137,7 +137,7 @@ private struct ThreadRow: View {
                 if row.phase == .running, let started = row.startedAt {
                     TimelineView(.periodic(from: .now, by: 30)) { context in
                         Text(elapsed(since: started, at: context.date))
-                            .font(.system(size: 10)).monospacedDigit().foregroundStyle(.tertiary)
+                            .font(.system(size: 10)).monospacedDigit().foregroundStyle(.secondary)
                     }.frame(width: 38, alignment: .trailing)
                 }
                 Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))

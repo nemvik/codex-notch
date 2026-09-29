@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import QuartzCore
 import IslandCore
 
 @MainActor
@@ -12,16 +13,25 @@ final class IslandController: NSObject, NSPopoverDelegate {
     private var observation: AnyCancellable?
     private var lastIndicator: IslandIndicator?
     private let notchPanel = NotchStatusPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    private let surfacePanel = NotchStatusPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     private var notchGeometry: NotchGeometry?
+    private var hoverState = NotchHoverState()
+    private var hoverTimer: Timer?
+    private var outsideMonitor: Any?
+    private var localMonitor: Any?
+    private var menuTracking = false
+    private var previousApplication: NSRunningApplication?
 
     init(model: IslandModel) {
         self.model = model
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
-        notchPanel.backgroundColor = .clear; notchPanel.isOpaque = false; notchPanel.hasShadow = false
-        notchPanel.level = .statusBar; notchPanel.hidesOnDeactivate = false; notchPanel.isMovable = false
-        notchPanel.isReleasedWhenClosed = false
-        notchPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        for panel in [notchPanel, surfacePanel] {
+            panel.backgroundColor = .clear; panel.isOpaque = false; panel.hasShadow = false
+            panel.level = .statusBar; panel.hidesOnDeactivate = false; panel.isMovable = false
+            panel.isReleasedWhenClosed = false; panel.minSize = .zero
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        }
         popover.behavior = .transient
         popover.delegate = self
         popover.contentViewController = NSHostingController(rootView: IslandView(model: model, presentation: presentation))
@@ -32,16 +42,51 @@ final class IslandController: NSObject, NSPopoverDelegate {
             button.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         }
         model.openThread = { [weak self] row in self?.open(row) }
-        model.closeOverview = { [weak self] in self?.popover.performClose(nil) }
+        model.closeOverview = { [weak self] in self?.closeOverview() }
         model.changed = { [weak self] in self?.refresh() }
         observation = model.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { self?.refresh() }
         }
         NotificationCenter.default.addObserver(self, selector: #selector(updateDisplay), name: NSApplication.didChangeScreenParametersNotification, object: nil)
-        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(updateDisplay), name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
-        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(updateDisplay), name: NSWorkspace.didWakeNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(resetInteraction), name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(resetInteraction), name: NSWorkspace.didWakeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationDeactivated), name: NSApplication.didResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(menuBegan), name: NSMenu.didBeginTrackingNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(menuEnded), name: NSMenu.didEndTrackingNotification, object: nil)
+        outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor in self?.closeOverview(restoreFocus: false) }
+        }
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] event in
+            if let self, event.type == .keyDown, event.keyCode == 53,
+               self.presentation.notchPhase == .expanded, !self.menuTracking,
+               self.model.settingsError == nil, self.surfacePanel.attachedSheet == nil {
+                self.closeOverview()
+                return nil
+            }
+            if event.type == .keyDown { return event }
+            if let self, !self.menuTracking, self.model.settingsError == nil, self.surfacePanel.attachedSheet == nil, event.window !== self.notchPanel, event.window !== self.surfacePanel,
+               self.presentation.notchPhase != .resting {
+                self.closeOverview(restoreFocus: false)
+            }
+            return event
+        }
+        let timer = Timer(timeInterval: 0.08, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.samplePointer() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        hoverTimer = timer
         updateDisplay()
         refresh()
+    }
+
+    @objc private func applicationDeactivated() {
+        if presentation.notchPhase == .expanded { closeOverview(restoreFocus: false) }
+    }
+
+    @objc private func resetInteraction() {
+        closeOverview(restoreFocus: false)
+        hoverState = NotchHoverState()
+        updateDisplay()
     }
 
     @objc private func updateDisplay() {
@@ -52,9 +97,17 @@ final class IslandController: NSObject, NSPopoverDelegate {
         }
         guard geometry != notchGeometry || notchPanel.contentView == nil else { return }
         popover.close()
+        hoverState = NotchHoverState()
+        presentation.notchPhase = .resting
+        surfacePanel.acceptsKeyboard = false
+        surfacePanel.orderOut(nil)
         notchGeometry = geometry
         if let geometry {
-            let host = NSHostingView(rootView: NotchStatusView(model: model, geometry: geometry) { [weak self] in self?.toggleOverview() })
+            let host = FirstMouseHostingView(rootView: NotchAnchorView(model: model, presentation: presentation, geometry: geometry) { [weak self] in self?.toggleOverview() })
+            let surface = FirstMouseHostingView(rootView: NotchSurfaceView(model: model, presentation: presentation, geometry: geometry, toggle: { [weak self] in self?.toggleOverview() }, includesAnchor: false))
+            surface.sizingOptions = []
+            surfacePanel.contentView = surface
+            surfacePanel.setFrame(geometry.bodyFrame(phase: .resting, capacity: presentation.rowCapacity), display: false)
             host.sizingOptions = []
             notchPanel.contentView = host
             notchPanel.setFrame(geometry.frame, display: true)
@@ -67,8 +120,53 @@ final class IslandController: NSObject, NSPopoverDelegate {
     }
 
     private func toggleOverview() {
-        if popover.isShown { popover.performClose(nil) }
+        if popover.isShown || presentation.notchPhase == .expanded { closeOverview() }
         else { showOverview() }
+    }
+
+    @objc private func menuBegan() { menuTracking = true }
+    @objc private func menuEnded() { menuTracking = false }
+
+    private func samplePointer() {
+        guard let geometry = notchGeometry, presentation.notchPhase != .expanded, !menuTracking, model.settingsError == nil else { return }
+        let point = NSEvent.mouseLocation
+        let visible = hoverState.sample(insideApproach: geometry.approachFrame.contains(point),
+                                        insideSurface: presentation.notchPhase == .revealed && surfacePanel.frame.contains(point),
+                                        mouseDown: NSEvent.pressedMouseButtons != 0,
+                                        now: ProcessInfo.processInfo.systemUptime)
+        let next: NotchPhase = visible ? .revealed : .resting
+        if next != presentation.notchPhase { setNotchPhase(next) }
+    }
+
+    private func setNotchPhase(_ phase: NotchPhase, animate: Bool = true) {
+        guard let geometry = notchGeometry else { return }
+        let duration = animate && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.22 : 0
+        withAnimation(duration > 0 ? .easeOut(duration: duration) : nil) {
+            presentation.notchPhase = phase
+        }
+        surfacePanel.acceptsKeyboard = phase == .expanded
+        if phase != .resting { surfacePanel.orderFrontRegardless() }
+        let frame = geometry.bodyFrame(phase: phase, capacity: presentation.rowCapacity)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            if duration > 0 { surfacePanel.animator().setFrame(frame, display: true) }
+            else { surfacePanel.setFrame(frame, display: true) }
+        } completionHandler: { [weak self] in
+            Task { @MainActor in
+                guard let self, self.presentation.notchPhase == .resting else { return }
+                self.surfacePanel.orderOut(nil)
+            }
+        }
+    }
+
+    private func closeOverview(restoreFocus: Bool = true) {
+        hoverState.suppressUntilExit()
+        if presentation.notchPhase != .resting { setNotchPhase(.resting) }
+        popover.performClose(nil)
+        surfacePanel.resignKey()
+        if restoreFocus, NSApp.isActive { previousApplication?.activate(options: []) }
+        previousApplication = nil
     }
 
     private func refresh() {
@@ -83,7 +181,7 @@ final class IslandController: NSObject, NSPopoverDelegate {
         statusItem.button?.toolTip = "\(model.headline) · \(model.subtitle)"
         statusItem.button?.setAccessibilityLabel("Codex Notch: \(model.headline). \(model.subtitle)")
         // Feed events never create or focus a window. Only the user's action opens it.
-        if popover.isShown { updateSize(reset: false) }
+        if popover.isShown || presentation.notchPhase == .expanded { updateSize(reset: false) }
     }
 
     @objc private func statusClicked(_ sender: NSStatusBarButton) {
@@ -99,24 +197,41 @@ final class IslandController: NSObject, NSPopoverDelegate {
     }
 
     func showOverview() {
-        guard let anchor: NSView = notchGeometry != nil ? notchPanel.contentView : statusItem.button else { return }
-        if popover.isShown { return }
+        if popover.isShown || presentation.notchPhase == .expanded { return }
+        if !NSApp.isActive { previousApplication = NSWorkspace.shared.frontmostApplication }
         updateSize(reset: true)
-        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         model.acknowledge()
-        NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKey()
-        statusItem.button?.highlight(true)
+        if notchGeometry != nil {
+            setNotchPhase(.expanded)
+            NSApp.activate(ignoringOtherApps: true)
+            surfacePanel.makeKeyAndOrderFront(nil)
+        } else if let anchor = statusItem.button {
+            popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            NSApp.activate(ignoringOtherApps: true)
+            popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+            statusItem.button?.highlight(true)
+        }
     }
 
     private func updateSize(reset: Bool) {
         let count = model.isConnected ? model.activity.visible.count : 0
         let requested = count == 0 ? 2 : min(IslandLayout.maximumRows, count)
         let capacity = reset ? requested : max(presentation.rowCapacity, requested)
-        if capacity != presentation.rowCapacity { presentation.rowCapacity = capacity }
+        let capacityChanged = capacity != presentation.rowCapacity
+        if capacityChanged { presentation.rowCapacity = capacity }
         let size = NSSize(width: IslandLayout.width, height: IslandLayout.bodyHeight(capacity: capacity))
         if popover.contentSize != size { popover.contentSize = size }
+        if presentation.notchPhase == .expanded, let geometry = notchGeometry {
+            let frame = geometry.bodyFrame(phase: .expanded, capacity: capacity)
+            if capacityChanged {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.22
+                    context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    surfacePanel.animator().setFrame(frame, display: true)
+                }
+            }
+        }
     }
 
     func popoverDidClose(_ notification: Notification) {
@@ -156,15 +271,19 @@ final class IslandController: NSObject, NSPopoverDelegate {
             model.settingsError = "Odkaz na chat se nepodařilo otevřít. Spusť desktopový Codex a zkus to znovu."
             return
         }
-        popover.performClose(nil)
+        closeOverview(restoreFocus: false)
     }
 
     func stop() {
         observation?.cancel()
+        hoverTimer?.invalidate()
+        if let outsideMonitor { NSEvent.removeMonitor(outsideMonitor) }
+        if let localMonitor { NSEvent.removeMonitor(localMonitor) }
         NotificationCenter.default.removeObserver(self)
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         popover.performClose(nil)
         notchPanel.orderOut(nil)
+        surfacePanel.orderOut(nil)
         NSStatusBar.system.removeStatusItem(statusItem)
         model.stop()
     }
